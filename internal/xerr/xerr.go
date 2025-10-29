@@ -9,7 +9,7 @@
 // Quick Start:
 //
 //	ctx := context.WithValue(context.Background(), "trace_id", "req-123")
-//	run := xerr.WithGlobalError(ctx, xerr.LoggerMiddleware)
+//	run := xerr.NewGlobalError(ctx, xerr.LoggerMiddleware)
 //
 //	var err error
 //	run(&err, "step 1", step1Fn)
@@ -34,7 +34,7 @@ import (
 	"fmt"
 )
 
-// Middleware is a function that observes operation execution.
+// middleware is a function that observes operation execution.
 // It receives:
 //   - ctx: the execution context
 //   - ok: true if operation succeeded, false if it failed
@@ -42,36 +42,11 @@ import (
 //   - err: the error if operation failed, nil otherwise
 //
 // Note: Middleware has read-only access and cannot modify the error result.
-type Middleware func(ctx context.Context, ok bool, tip string, err error)
+type middleware func(ctx context.Context, ok bool, tip string, err error)
 
-// Run executes a single operation with middleware support.
-// This is a low-level function. For multiple sequential operations, prefer WithGlobalError.
-//
-// Parameters:
-//   - ctx: context for the operation
-//   - err: pointer to error variable (if already set, execution is skipped - short-circuit)
-//   - tip: description for middleware tracing (NOT used for error wrapping)
-//   - fn: the operation to execute
-//   - mids: optional middleware functions for observability
-//
-// Behavior:
-//   - If *err is already set, fn is NOT executed (short-circuit on first error)
-//   - If fn returns error, it's assigned to *err WITHOUT wrapping
-//   - Middleware receives the tip for logging/metrics, but cannot modify the error
-//
-// Example (single operation):
-//
-//	var err error
-//	xerr.Run(ctx, &err, "fetch user", fetchUserFn)
-//
-// Example (multiple operations - verbose):
-//
-//	var err error
-//	xerr.Run(ctx, &err, "step1", step1Fn)
-//	xerr.Run(ctx, &err, "step2", step2Fn)  // Skipped if step1 failed
-//
-// For cleaner code with multiple operations, use WithGlobalError instead.
-func Run(ctx context.Context, err *error, tip string, fn func(context.Context) error, mids ...Middleware) {
+// run executes a single operation with middleware support.
+// This is an internal function. External callers should use WithGlobalError.
+func run(ctx context.Context, err *error, tip string, fn func(context.Context) error, mids ...middleware) {
 	if *err != nil {
 		return // short-circuit
 	}
@@ -90,7 +65,7 @@ func Run(ctx context.Context, err *error, tip string, fn func(context.Context) e
 	// Success: do nothing, *err remains nil
 }
 
-// WithGlobalError creates a reusable runner for sequential operations with shared error state.
+// NewGlobalError creates a reusable runner for sequential operations with shared error state.
 // This is the RECOMMENDED API for handling multiple operations where any error stops the flow.
 //
 // The returned runner:
@@ -105,7 +80,7 @@ func Run(ctx context.Context, err *error, tip string, fn func(context.Context) e
 // Example:
 //
 //	ctx := context.WithValue(context.Background(), "trace_id", "req-123")
-//	run := xerr.WithGlobalError(ctx, xerr.LoggerMiddleware)
+//	run := xerr.NewGlobalError(ctx, xerr.LoggerMiddleware)
 //
 //	var err error
 //	run(&err, "validate input", validateFn)
@@ -118,9 +93,9 @@ func Run(ctx context.Context, err *error, tip string, fn func(context.Context) e
 //	}
 //
 // Note: For future extension, consider WithBatchError for collecting all errors without short-circuit.
-func WithGlobalError(ctx context.Context, mids ...Middleware) func(*error, string, func(context.Context) error) {
+func NewGlobalError(ctx context.Context, mids ...middleware) func(*error, string, func(context.Context) error) {
 	return func(err *error, tip string, fn func(context.Context) error) {
-		Run(ctx, err, tip, fn, mids...)
+		run(ctx, err, tip, fn, mids...)
 	}
 }
 
@@ -132,7 +107,7 @@ func WithGlobalError(ctx context.Context, mids ...Middleware) func(*error, strin
 //
 // Example usage:
 //
-//	run := xerr.WithGlobalError(ctx, xerr.LoggerMiddleware)
+//	run := xerr.NewGlobalError(ctx, xerr.LoggerMiddleware)
 func LoggerMiddleware(ctx context.Context, ok bool, tip string, err error) {
 	if ok {
 		fmt.Printf("✅[%s] %s\n", getTraceID(ctx), tip)

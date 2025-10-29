@@ -13,7 +13,7 @@ func TestRun_Success(t *testing.T) {
 	ctx := context.Background()
 	var err error
 
-	Run(ctx, &err, "test operation", func(ctx context.Context) error {
+	run(ctx, &err, "test operation", func(ctx context.Context) error {
 		return nil
 	})
 
@@ -28,7 +28,7 @@ func TestRun_WithError(t *testing.T) {
 	var err error
 	expectedErr := errors.New("operation failed")
 
-	Run(ctx, &err, "test operation", func(ctx context.Context) error {
+	run(ctx, &err, "test operation", func(ctx context.Context) error {
 		return expectedErr
 	})
 
@@ -44,7 +44,7 @@ func TestRun_ShortCircuit(t *testing.T) {
 	err := firstErr
 
 	executed := false
-	Run(ctx, &err, "should not execute", func(ctx context.Context) error {
+	run(ctx, &err, "should not execute", func(ctx context.Context) error {
 		executed = true
 		return errors.New("second error")
 	})
@@ -64,7 +64,7 @@ func TestRun_ErrorNotWrapped(t *testing.T) {
 	var err error
 	originalErr := errors.New("original error")
 
-	Run(ctx, &err, "this tip should NOT wrap the error", func(ctx context.Context) error {
+	run(ctx, &err, "this tip should NOT wrap the error", func(ctx context.Context) error {
 		return originalErr
 	})
 
@@ -97,7 +97,7 @@ func TestRun_MiddlewareExecution(t *testing.T) {
 			receivedErr = err
 		}
 
-		Run(ctx, &err, "success operation", func(ctx context.Context) error {
+		run(ctx, &err, "success operation", func(ctx context.Context) error {
 			return nil
 		}, middleware)
 
@@ -128,7 +128,7 @@ func TestRun_MiddlewareExecution(t *testing.T) {
 			receivedErr = err
 		}
 
-		Run(ctx, &err, "failed operation", func(ctx context.Context) error {
+		run(ctx, &err, "failed operation", func(ctx context.Context) error {
 			return expectedErr
 		}, middleware)
 
@@ -160,7 +160,7 @@ func TestRun_MultipleMiddlewares(t *testing.T) {
 		callOrder = append(callOrder, 3)
 	}
 
-	Run(ctx, &err, "test", func(ctx context.Context) error {
+	run(ctx, &err, "test", func(ctx context.Context) error {
 		return nil
 	}, mid1, mid2, mid3)
 
@@ -184,7 +184,7 @@ func TestRun_MiddlewareCannotModifyError(t *testing.T) {
 		err = errors.New("modified error")
 	}
 
-	Run(ctx, &err, "test", func(ctx context.Context) error {
+	run(ctx, &err, "test", func(ctx context.Context) error {
 		return originalErr
 	}, maliciousMid)
 
@@ -194,8 +194,8 @@ func TestRun_MiddlewareCannotModifyError(t *testing.T) {
 	}
 }
 
-// TestWithGlobalError_CreateReusableRunner tests the WithGlobalError function
-func TestWithGlobalError_CreateReusableRunner(t *testing.T) {
+// TestNewGlobalError_CreateReusableRunner tests the NewGlobalError function
+func TestNewGlobalError_CreateReusableRunner(t *testing.T) {
 	ctx := context.Background()
 	var callCount int
 
@@ -203,8 +203,8 @@ func TestWithGlobalError_CreateReusableRunner(t *testing.T) {
 		callCount++
 	}
 
-	// WithGlobalError binds context and middleware, returns a context-free runner
-	runner := WithGlobalError(ctx, middleware)
+	// NewGlobalError binds context and middleware, returns a context-free runner
+	runner := NewGlobalError(ctx, middleware)
 
 	// Use the runner multiple times (no need to pass context)
 	var err1 error
@@ -234,7 +234,7 @@ func TestRun_ContextPropagation(t *testing.T) {
 	var err error
 
 	var receivedValue interface{}
-	Run(ctx, &err, "test", func(ctx context.Context) error {
+	run(ctx, &err, "test", func(ctx context.Context) error {
 		receivedValue = ctx.Value("key")
 		return nil
 	})
@@ -244,14 +244,14 @@ func TestRun_ContextPropagation(t *testing.T) {
 	}
 }
 
-// TestWithGlobalError_ContextBinding tests that WithGlobalError properly binds the context
-func TestWithGlobalError_ContextBinding(t *testing.T) {
+// TestNewGlobalError_ContextBinding tests that NewGlobalError properly binds the context
+func TestNewGlobalError_ContextBinding(t *testing.T) {
 	// Create context with a value
 	ctx := context.WithValue(context.Background(), "request_id", "req-456")
 	var err error
 
 	var receivedValue interface{}
-	runner := WithGlobalError(ctx)
+	runner := NewGlobalError(ctx)
 
 	// Use the runner - it should use the bound context
 	runner(&err, "test operation", func(ctx context.Context) error {
@@ -264,8 +264,8 @@ func TestWithGlobalError_ContextBinding(t *testing.T) {
 	}
 }
 
-// TestWithGlobalError_MiddlewareReceivesBoundContext tests that middleware receives the bound context
-func TestWithGlobalError_MiddlewareReceivesBoundContext(t *testing.T) {
+// TestNewGlobalError_MiddlewareReceivesBoundContext tests that middleware receives the bound context
+func TestNewGlobalError_MiddlewareReceivesBoundContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), "trace_id", "trace-789")
 	var err error
 
@@ -274,7 +274,7 @@ func TestWithGlobalError_MiddlewareReceivesBoundContext(t *testing.T) {
 		middlewareReceivedValue = ctx.Value("trace_id")
 	}
 
-	runner := WithGlobalError(ctx, middleware)
+	runner := NewGlobalError(ctx, middleware)
 	runner(&err, "test", func(ctx context.Context) error {
 		return nil
 	})
@@ -356,22 +356,22 @@ func TestRun_ComplexScenario(t *testing.T) {
 	}
 
 	// Step 1: Success
-	Run(ctx, &err, "validate input", func(ctx context.Context) error {
+	run(ctx, &err, "validate input", func(ctx context.Context) error {
 		return nil
 	}, logger)
 
 	// Step 2: Success
-	Run(ctx, &err, "fetch data", func(ctx context.Context) error {
+	run(ctx, &err, "fetch data", func(ctx context.Context) error {
 		return nil
 	}, logger)
 
 	// Step 3: Failure
-	Run(ctx, &err, "process data", func(ctx context.Context) error {
+	run(ctx, &err, "process data", func(ctx context.Context) error {
 		return errors.New("processing failed")
 	}, logger)
 
 	// Step 4: Should be skipped
-	Run(ctx, &err, "save result", func(ctx context.Context) error {
+	run(ctx, &err, "save result", func(ctx context.Context) error {
 		return nil
 	}, logger)
 
@@ -402,7 +402,7 @@ func TestRun_NilMiddleware(t *testing.T) {
 	var err error
 
 	// This should not panic
-	Run(ctx, &err, "test", func(ctx context.Context) error {
+	run(ctx, &err, "test", func(ctx context.Context) error {
 		return nil
 	})
 }
@@ -412,9 +412,9 @@ func TestRun_EmptyMiddlewareSlice(t *testing.T) {
 	ctx := context.Background()
 	var err error
 
-	Run(ctx, &err, "test", func(ctx context.Context) error {
+	run(ctx, &err, "test", func(ctx context.Context) error {
 		return errors.New("test error")
-	}, []Middleware{}...)
+	}, []middleware{}...)
 
 	if err == nil {
 		t.Error("error should be captured even without middlewares")
@@ -428,7 +428,7 @@ func BenchmarkRun_NoMiddleware(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var err error
-		Run(ctx, &err, "benchmark", func(ctx context.Context) error {
+		run(ctx, &err, "benchmark", func(ctx context.Context) error {
 			return nil
 		})
 	}
@@ -442,17 +442,17 @@ func BenchmarkRun_WithMiddleware(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var err error
-		Run(ctx, &err, "benchmark", func(ctx context.Context) error {
+		run(ctx, &err, "benchmark", func(ctx context.Context) error {
 			return nil
 		}, mid)
 	}
 }
 
-// BenchmarkWithGlobalError benchmarks the WithGlobalError function
-func BenchmarkWithGlobalError(b *testing.B) {
+// BenchmarkNewGlobalError benchmarks the NewGlobalError function
+func BenchmarkNewGlobalError(b *testing.B) {
 	ctx := context.Background()
 	mid := func(ctx context.Context, ok bool, tip string, err error) {}
-	runner := WithGlobalError(ctx, mid)
+	runner := NewGlobalError(ctx, mid)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
