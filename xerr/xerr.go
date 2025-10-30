@@ -42,7 +42,7 @@ import (
 //   - err: the error if operation failed, nil otherwise
 //
 // Note: Middleware has read-only access and cannot modify the error result.
-type middleware func(ctx context.Context, ok bool, tip string, err error)
+type middleware func(ctx context.Context, err error, tip string)
 
 // run executes a single operation with middleware support.
 // This is an internal function. External callers should use WithGlobalError.
@@ -55,7 +55,7 @@ func run(ctx context.Context, err *error, tip string, fn func(context.Context) e
 
 	// Middleware uses tip for tracing, cannot modify e
 	for _, mid := range mids {
-		mid(ctx, e == nil, tip, e)
+		mid(ctx, e, tip)
 	}
 
 	// Keep original error, no wrapping!
@@ -108,8 +108,8 @@ func NewGlobalError(ctx context.Context, mids ...middleware) func(*error, string
 // Example usage:
 //
 //	run := xerr.NewGlobalError(ctx, xerr.LoggerMiddleware)
-func LoggerMiddleware(ctx context.Context, ok bool, tip string, err error) {
-	if ok {
+func LoggerMiddleware(ctx context.Context, err error, tip string) {
+	if err == nil {
 		fmt.Printf("✅[%s] %s\n", getTraceID(ctx), tip)
 	} else {
 		fmt.Printf("❌[%s] %s: %v\n", getTraceID(ctx), tip, err)

@@ -86,15 +86,13 @@ func TestRun_MiddlewareExecution(t *testing.T) {
 	t.Run("middleware receives success", func(t *testing.T) {
 		var err error
 		var middlewareCalled bool
-		var receivedOk bool
 		var receivedTip string
 		var receivedErr error
 
-		middleware := func(ctx context.Context, ok bool, tip string, err error) {
+		middleware := func(ctx context.Context, err error, tip string) {
 			middlewareCalled = true
-			receivedOk = ok
-			receivedTip = tip
 			receivedErr = err
+			receivedTip = tip
 		}
 
 		run(ctx, &err, "success operation", func(ctx context.Context) error {
@@ -104,14 +102,11 @@ func TestRun_MiddlewareExecution(t *testing.T) {
 		if !middlewareCalled {
 			t.Error("middleware was not called")
 		}
-		if !receivedOk {
-			t.Error("middleware should receive ok=true for success")
+		if receivedErr != nil {
+			t.Errorf("middleware should receive nil error for success, got: %v", receivedErr)
 		}
 		if receivedTip != "success operation" {
 			t.Errorf("middleware should receive correct tip, got: %s", receivedTip)
-		}
-		if receivedErr != nil {
-			t.Errorf("middleware should receive nil error, got: %v", receivedErr)
 		}
 	})
 
@@ -119,12 +114,10 @@ func TestRun_MiddlewareExecution(t *testing.T) {
 		var err error
 		expectedErr := errors.New("operation failed")
 		var middlewareCalled bool
-		var receivedOk bool
 		var receivedErr error
 
-		middleware := func(ctx context.Context, ok bool, tip string, err error) {
+		middleware := func(ctx context.Context, err error, tip string) {
 			middlewareCalled = true
-			receivedOk = ok
 			receivedErr = err
 		}
 
@@ -134,9 +127,6 @@ func TestRun_MiddlewareExecution(t *testing.T) {
 
 		if !middlewareCalled {
 			t.Error("middleware was not called")
-		}
-		if receivedOk {
-			t.Error("middleware should receive ok=false for error")
 		}
 		if receivedErr != expectedErr {
 			t.Errorf("middleware should receive the error, got: %v", receivedErr)
@@ -150,13 +140,13 @@ func TestRun_MultipleMiddlewares(t *testing.T) {
 	var err error
 	var callOrder []int
 
-	mid1 := func(ctx context.Context, ok bool, tip string, err error) {
+	mid1 := func(ctx context.Context, err error, tip string) {
 		callOrder = append(callOrder, 1)
 	}
-	mid2 := func(ctx context.Context, ok bool, tip string, err error) {
+	mid2 := func(ctx context.Context, err error, tip string) {
 		callOrder = append(callOrder, 2)
 	}
-	mid3 := func(ctx context.Context, ok bool, tip string, err error) {
+	mid3 := func(ctx context.Context, err error, tip string) {
 		callOrder = append(callOrder, 3)
 	}
 
@@ -179,7 +169,7 @@ func TestRun_MiddlewareCannotModifyError(t *testing.T) {
 	originalErr := errors.New("original error")
 
 	// Middleware that tries to "modify" the error (but shouldn't affect the result)
-	maliciousMid := func(ctx context.Context, ok bool, tip string, err error) {
+	maliciousMid := func(ctx context.Context, err error, tip string) {
 		// This is a read-only view, cannot modify the actual error
 		err = errors.New("modified error")
 	}
@@ -199,7 +189,7 @@ func TestNewGlobalError_CreateReusableRunner(t *testing.T) {
 	ctx := context.Background()
 	var callCount int
 
-	middleware := func(ctx context.Context, ok bool, tip string, err error) {
+	middleware := func(ctx context.Context, err error, tip string) {
 		callCount++
 	}
 
@@ -270,7 +260,7 @@ func TestNewGlobalError_MiddlewareReceivesBoundContext(t *testing.T) {
 	var err error
 
 	var middlewareReceivedValue interface{}
-	middleware := func(ctx context.Context, ok bool, tip string, err error) {
+	middleware := func(ctx context.Context, err error, tip string) {
 		middlewareReceivedValue = ctx.Value("trace_id")
 	}
 
@@ -291,17 +281,17 @@ func TestLoggerMiddleware(t *testing.T) {
 	t.Run("success log", func(t *testing.T) {
 		// We can't easily capture fmt.Printf output without redirecting stdout,
 		// so we just verify it doesn't panic
-		LoggerMiddleware(ctx, true, "test operation", nil)
+		LoggerMiddleware(ctx, nil, "test operation")
 	})
 
 	t.Run("error log", func(t *testing.T) {
 		err := errors.New("test error")
-		LoggerMiddleware(ctx, false, "test operation", err)
+		LoggerMiddleware(ctx, err, "test operation")
 	})
 
 	t.Run("no trace_id", func(t *testing.T) {
 		ctx := context.Background()
-		LoggerMiddleware(ctx, true, "test operation", nil)
+		LoggerMiddleware(ctx, nil, "test operation")
 	})
 }
 
@@ -347,8 +337,8 @@ func TestRun_ComplexScenario(t *testing.T) {
 	var err error
 	var executionLog []string
 
-	logger := func(ctx context.Context, ok bool, tip string, err error) {
-		if ok {
+	logger := func(ctx context.Context, err error, tip string) {
+		if err == nil {
 			executionLog = append(executionLog, fmt.Sprintf("✅ %s", tip))
 		} else {
 			executionLog = append(executionLog, fmt.Sprintf("❌ %s: %v", tip, err))
@@ -437,7 +427,7 @@ func BenchmarkRun_NoMiddleware(b *testing.B) {
 // BenchmarkRun_WithMiddleware benchmarks Run with middleware
 func BenchmarkRun_WithMiddleware(b *testing.B) {
 	ctx := context.Background()
-	mid := func(ctx context.Context, ok bool, tip string, err error) {}
+	mid := func(ctx context.Context, err error, tip string) {}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -451,7 +441,7 @@ func BenchmarkRun_WithMiddleware(b *testing.B) {
 // BenchmarkNewGlobalError benchmarks the NewGlobalError function
 func BenchmarkNewGlobalError(b *testing.B) {
 	ctx := context.Background()
-	mid := func(ctx context.Context, ok bool, tip string, err error) {}
+	mid := func(ctx context.Context, err error, tip string) {}
 	runner := NewGlobalError(ctx, mid)
 
 	b.ResetTimer()
